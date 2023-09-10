@@ -8,7 +8,16 @@ sandbox repository for playing around with facial and gesture recognition using 
  * pip3 install mediapipe
  * pip3 install opencv-python
  * pip3 install matplotlib
+ * pip3 install PyQt5==5.14.2  ### in case qt, wayland or xcb are annoying
 
 ## usage
 
- * open `gesture_recognizer.ipynb` using jupyter
+start the latest and greatest demo
+
+ * `python3 main.py`
+
+or open the notebooks using jupyter and play around
+
+ * open `notebooks/*.ipynb` 
+
+ 
