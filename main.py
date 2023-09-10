@@ -31,11 +31,12 @@ while cap.isOpened():
     # filtered = cv2.GaussianBlur(zoomed,(5,5),0)
     human, mask, leftHandRegion, rightHandRegion = d.update(cropped)
     ### use the masked image to mask out everything except for the human body
-    # maskedHuman = cv2.bitwise_and(human, human, mask=mask)
+    maskedHuman = cv2.bitwise_and(cropped, cropped, mask=mask)
     # resultImage = r.update(maskedHuman)
     ### cut out the hands and feed the dedicated hand images into the gesture recognition
     if leftHandRegion != None:
-      leftHandImage = leftHandRegion.zoomInto(cropped)
+      #leftHandImage = leftHandRegion.zoomInto(cropped)
+      leftHandImage = leftHandRegion.zoomInto(maskedHuman)
       # leftHandImage = leftHandRegion.cropFrom(leftHandImage)
       resultImage1 = r1.update(leftHandImage)
       ### resze for visualization
@@ -43,8 +44,8 @@ while cap.isOpened():
         resultImage1 = cv2.resize(resultImage1, (500, 500), interpolation = cv2.INTER_AREA)
         utils.showInMovedWindow("LeftHandVideo",resultImage1, 50, 10)
     if rightHandRegion != None:
-      rightHandImage = rightHandRegion.zoomInto(cropped)
       # rightHandImage = rightHandRegion.cropFrom(cropped)
+      rightHandImage = rightHandRegion.zoomInto(maskedHuman)
       resultImage2 = r2.update(rightHandImage)
       ### resze for visualization
       if utils.isLegitImage(resultImage2):

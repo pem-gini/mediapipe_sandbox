@@ -11,34 +11,6 @@ import cv2
 import src.HumanPoseDetector as HPD
 import src.Utils as utils
 
-class HandRegion:
-    def __init__(self, center, r):
-        self.center = center
-        self.r = r
-    def cropFrom(self, image):
-        cropped = image.copy()
-        x,y = self.center
-        # print(x,y,self.r)
-        img_h, img_w, cannel = image.shape
-        w1 = utils.clamp(0, int(x - self.r*1.75), img_w)
-        w2 = utils.clamp(0, int(x + self.r*1.75), img_w)
-        h1 = utils.clamp(0, int(y - self.r*1.75), img_h)
-        h2 = utils.clamp(0, int(y + self.r*1.75), img_h)
-        cropped_image = cropped[h1:h2, w1:w2]
-        return cropped_image
-    def zoomInto(self, image):
-        ### adaptive linear zoom based on r with k = 10
-        # k = 20.0
-        # zoomfactor = clamp(2.0, (np.sqrt(1.0 / self.r) * k), 2.0) 
-        ### adaptive linear zoom based on some math
-        # zoom = r/110 + 5/11 + 6
-        # zoomfactor = clamp(1.0, (self.r /110 + 5.0/11.0 + 6.0), 6.0) 
-        ### adaptive quadratic zoom based on some math (r = pixelradius)
-        #zoom = 0.00001r^2 - 0.0158r + 6.4
-        zoomfactor = utils.clamp(1.0, (0.00001 * self.r ** 2 - 0.0158 * self.r + 6.4), 6.0) 
-        ### do the zoom
-        zoomed = utils.zoom_at(image, zoomfactor, self.center)
-        return zoomed
 
 class SpecialHandsOrientedHumanPoseDetector(HPD.HumanPoseDetector):
     def __init__(self):
@@ -51,9 +23,10 @@ class SpecialHandsOrientedHumanPoseDetector(HPD.HumanPoseDetector):
         self.stamp = self.stamp + 1
         # process the result. In this case, visualize it.
         pose_landmarks = None
-        resultImage, leftHand, rightHand = self.draw(mpImage.numpy_view(), self.results) ##mpImage back to numpy image
-        maskImage = self.createMask(mpImage.numpy_view(), self.results)
-        return resultImage, maskImage, leftHand, rightHand
+        resultImage, leftHandRegion, rightHandRegion = self.draw(mpImage.numpy_view(), self.results) ##mpImage back to numpy image
+        ### creat special mask, where the hand regions are whitelisted, and the mask iteratons is smaller then usual
+        maskImage = self.createMask(mpImage.numpy_view(), self.results, iterations=1, whitelist_regions=[leftHandRegion, rightHandRegion])
+        return resultImage, maskImage, leftHandRegion, rightHandRegion
     def draw(self, image, detection_result):
         ### call base class draw
         annotated_image = super().draw(image, detection_result)
@@ -84,8 +57,11 @@ class SpecialHandsOrientedHumanPoseDetector(HPD.HumanPoseDetector):
                 handLeftR = None
                 handRightR = None
                 ### get point between wrist and pinky
-                idxl1, idxl2 = (15, 17)
-                idxr1, idxr2 = (16, 18)
+                # idxl1, idxl2 = (15, 17)
+                # idxr1, idxr2 = (16, 18)
+                ### get point between index and pinky
+                idxl1, idxl2 = (19, 17)
+                idxr1, idxr2 = (20, 18)
                 ### Left Hand
                 try:
                     ### get coordinate between wrist and pinky
@@ -116,19 +92,20 @@ class SpecialHandsOrientedHumanPoseDetector(HPD.HumanPoseDetector):
                     pass
                 ### do rect around both hands
                 ### calculate radius based on distance between     
+                handregioninflation = 4.5
                 if handLeftVal is not None and handLeftR is not None:
-                    ### radius safety factor = 4.5 
-                    handLeftR = int(handLeftR * 4.5)
-                    ### radius minimum size = 100 pixel, max size = 500 pixels
-                    handLeftR = utils.clamp(100, handLeftR, 500)
-                    cv2.circle(hand_annotaded_image, handLeftVal, handLeftR, (255,0,0), 2)
-                    leftHandRegion = HandRegion(handLeftVal, handLeftR)
+                    ### radius safety factor ~ 4.5
+                    inflatedR = int(handLeftR * handregioninflation)
+                    ### radius minimum size = 10 pixel, max size = 500 pixels
+                    inflatedR = utils.clamp(25, inflatedR, 500)
+                    cv2.circle(hand_annotaded_image, handLeftVal, inflatedR, (255,0,0), 2)
+                    leftHandRegion = HPD.RegionOfInterest(handLeftVal, handLeftR, inflation=handregioninflation)
                 if handRightVal is not None and handRightR is not None:
-                    ### radius safety factor = 4.5 
-                    handRightR = int(handRightR * 4.5)
-                    ### radius minimum size = 100 pixel, max size = 500 pixels
-                    handRightR = utils.clamp(100, handRightR, 500)
-                    cv2.circle(hand_annotaded_image, handRightVal, handRightR, (0,255,0), 2)
-                    rightHandRegion = HandRegion(handRightVal, handRightR)
+                    ### radius safety factor ~ 4.5
+                    inflatedR = int(handRightR * handregioninflation)
+                    ### radius minimum size = 10 pixel, max size = 500 pixels
+                    inflatedR = utils.clamp(25, inflatedR, 500)
+                    cv2.circle(hand_annotaded_image, handRightVal, inflatedR, (0,255,0), 2)
+                    rightHandRegion = HPD.RegionOfInterest(handRightVal, handRightR, inflation=handregioninflation)
 
         return hand_annotaded_image, leftHandRegion, rightHandRegion
