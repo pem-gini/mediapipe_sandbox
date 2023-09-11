@@ -38,14 +38,21 @@ def zoom_at(img, zoom, coord=None):
   zoom: float
   coord: (float, float)
   """
+  if not isLegitImage(img):
+    return img.copy()
+  h, w, c = img.shape
   # Translate to zoomed coordinates
-  h, w, _ = [ zoom * i for i in img.shape ]
-  if coord is None: cx, cy = w/2, h/2
+  hzoom, wzoom, _ = [ zoom * i for i in img.shape ]
+  if coord is None: cx, cy = wzoom/2, hzoom/2
   else: cx, cy = [ zoom*c for c in coord ]
   img = cv2.resize( img, (0, 0), fx=zoom, fy=zoom)
-  zoomedImg = img[ int(round(cy - h/zoom * .5)) : int(round(cy + h/zoom * .5)),
-              int(round(cx - w/zoom * .5)) : int(round(cx + w/zoom * .5)),
-              : ].copy()
+  ### for some reason, the cant be negative or resize fails ... but a too large l and r work? Debug later how this can be approached
+  t = max(0, int(round(cy - hzoom/zoom * .5)))
+  b = max(0, int(round(cy + hzoom/zoom * .5)))
+  l = max(0, int(round(cx - wzoom/zoom * .5)))
+  r = max(0, int(round(cx + wzoom/zoom * .5)))
+  # print(t,b,l,r)
+  zoomedImg = img[t:b, l:r, :].copy()
   return zoomedImg
 
 def isLegitImage(img):

@@ -9,7 +9,7 @@ import src.Utils as utils
 
 
 class GestureRecognizer:
-  def __init__(self, num_hands=2):
+  def __init__(self, num_hands=2, ca=0.5, cb=0.5, cc=0.5):
       self.mp_hands = mp.solutions.hands
       self.mp_drawing = mp.solutions.drawing_utils
       self.mp_drawing_styles = mp.solutions.drawing_styles
@@ -20,9 +20,9 @@ class GestureRecognizer:
       options = vision.GestureRecognizerOptions(base_options=base_options, 
                                                 running_mode=VisionRunningMode.LIVE_STREAM,
                                                 num_hands=num_hands,
-                                                min_hand_detection_confidence=0.1,
-                                                min_hand_presence_confidence=0.8,
-                                                min_tracking_confidence=0.1,
+                                                min_hand_detection_confidence=ca,
+                                                min_hand_presence_confidence=cb,
+                                                min_tracking_confidence=cc,
                                                 result_callback=self.process_frame
       )
       self.recognizer = vision.GestureRecognizer.create_from_options(options)
@@ -46,13 +46,13 @@ class GestureRecognizer:
     hands_landmarks = None
     handedness = None
     if self.results:
-      # if recognition_result.gestures and recognition_result.hand_landmarks:
-      for top in self.results.gestures:
-        top_gestures.append(top[0])
-      hands_landmarks = self.results.hand_landmarks
-      handedness = self.results.handedness
-    resultImage = self.draw(mpImage.numpy_view(), top_gestures, hands_landmarks, handedness) ##mpImage back to numpy image
-    return resultImage
+        # if recognition_result.gestures and recognition_result.hand_landmarks:
+        for top in self.results.gestures:
+           top_gestures.append(top[0])
+        hands_landmarks = self.results.hand_landmarks
+        handedness = self.results.handedness
+        image = self.draw(mpImage.numpy_view(), top_gestures, hands_landmarks, handedness) ##mpImage back to numpy image
+    return image
     
   def draw(self, image, top_gestures, hands_landmarks, handedness):
     annotated_image = image.copy()
@@ -81,9 +81,9 @@ class GestureRecognizer:
           font = cv2.FONT_HERSHEY_SIMPLEX
           if "Left" in side_d:
             titleLeft = f"L:{top_gestures[side_d['Left']].category_name} ({top_gestures[side_d['Left']].score:.2f})"
-            cv2.putText(annotated_image, titleLeft, (10,30), font, 0.7, (0, 255, 0), 2, cv2.LINE_AA)
+            cv2.putText(annotated_image, titleLeft, (10,30), font, 1.1, (0, 255, 0), 2, cv2.LINE_AA)
           if "Right" in side_d:
             titleRight = f"R:{top_gestures[side_d['Right']].category_name} ({top_gestures[side_d['Right']].score:.2f})"
-            cv2.putText(annotated_image, titleRight, (400,30), font, 0.7, (0, 255, 0), 2, cv2.LINE_AA)
+            cv2.putText(annotated_image, titleRight, (400,30), font, 1.1, (0, 255, 0), 2, cv2.LINE_AA)
     return annotated_image
 

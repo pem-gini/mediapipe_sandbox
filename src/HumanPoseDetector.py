@@ -13,15 +13,25 @@ class RegionOfInterest():
     self.center = center
     self.r = r
     self.inflation = inflation
+  def update(self, roi,  kxy=0.5, kr=0.5):
+    if roi:
+      self.inflation = roi.inflation
+      x,y = self.center
+      newx, newy = roi.center
+      ### smal complementary weight filter
+      x = int((1.0 - kxy) * x + (kxy * newx))
+      y = int((1.0 - kxy) * y + (kxy * newy))
+      self.center = (x,y)
+      self.r = int((1.0 - kr) * self.r + (kr * roi.r))
   def cropFrom(self, image):
     cropped = image.copy()
     x,y = self.center
     x,y = self.center
     img_h, img_w = image.shape
-    w1 = utils.clamp(0, int(x - self.r), img_w)
-    w2 = utils.clamp(0, int(x + self.r), img_w)
-    h1 = utils.clamp(0, int(y - self.r), img_h)
-    h2 = utils.clamp(0, int(y + self.r), img_h)
+    w1 = utils.clamp(0, int(x - self.getInflatedR()), img_w)
+    w2 = utils.clamp(0, int(x + self.getInflatedR()), img_w)
+    h1 = utils.clamp(0, int(y - self.getInflatedR()), img_h)
+    h2 = utils.clamp(0, int(y + self.getInflatedR()), img_h)
     l = min(w1,w2)
     r = max(w1,w2)
     t = min(h1,h2)
@@ -29,17 +39,10 @@ class RegionOfInterest():
     cropped_image = cropped[t:b, l:r]
     return cropped_image
   def zoomInto(self, image):
-    ### adaptive linear zoom based on r with k = 10
-    # k = 20.0
-    # zoomfactor = clamp(2.0, (np.sqrt(1.0 / self.r) * k), 2.0) 
-    ### adaptive linear zoom based on some math
-    # zoom = r/110 + 5/11 + 6
-    # zoomfactor = clamp(1.0, (self.r /110 + 5.0/11.0 + 6.0), 6.0) 
-    ### adaptive quadratic zoom based on some math (r = pixelradius)
-    #zoom = 0.00001r^2 - 0.0158r + 6.4
-    # zoomfactor = utils.clamp(0.1, (0.00001 * self.r ** 2 - 0.0158 * self.r + 6.0), 6.0) 
     ### more correct math after changing r definition
-    zoomfactor = utils.clamp(1.0, -1/6 * self.r + 8, 10.0)
+    zoomfactor = utils.clamp(1.0, -1/6 * self.r + 8, 10.0) # big zoom
+    # zoomfactor = utils.clamp(1.0, -1/5 * self.r + 8, 10.0) # big -1  zoom
+    # zoomfactor = utils.clamp(1.0, -1/4 * self.r + 8, 10.0) # big -2  zoom
     ### do the zoom
     zoomed = utils.zoom_at(image, zoomfactor, self.center)
     return zoomed
@@ -47,7 +50,7 @@ class RegionOfInterest():
     ### circle
     x,y = self.center
     img_h, img_w = image.shape
-    r = self.r * self.inflation if inflate else self.r
+    r = self.getInflatedR() if inflate else self.r
     image = cv2.circle(image, self.center, int(r), color, -1)
     return image
   def setRectColor(self, image, color):
@@ -63,18 +66,21 @@ class RegionOfInterest():
     b = max(h1,h2)
     image = cv2.rectangle(image, (l,t), (r, b), color, -1)
     return image
+  def getInflatedR(self):
+    return self.r * self.inflation
 
 
 class HumanPoseDetector:
-  def __init__(self):
+  def __init__(self, use_human_pose_mask=False):
     self.stamp = 0
+    self.use_human_pose_mask = use_human_pose_mask
     ### create an PoseLandmarker object.
     VisionRunningMode = mp.tasks.vision.RunningMode
     base_options = python.BaseOptions(model_asset_path='modeltasks/pose_landmarker.task')
     options = vision.PoseLandmarkerOptions(
         base_options=base_options,
         running_mode=VisionRunningMode.LIVE_STREAM,
-        output_segmentation_masks=True,
+        output_segmentation_masks=self.use_human_pose_mask,
         result_callback=self.process_frame
     )
     self.detector = vision.PoseLandmarker.create_from_options(options)
@@ -114,12 +120,18 @@ class HumanPoseDetector:
           solutions.drawing_styles.get_default_pose_landmarks_style())
     return annotated_image
   
+  ### create a single mask image from multiple sources
   def createMask(self, image, detection_result, iterations=4, whitelist_regions : list[RegionOfInterest] = []):
     visualized_mask = image.copy()
-    ### if detection exists, create propr mask image
+    ### if detection exists, create proper mask images
     try:
-      segmentation_mask = detection_result.segmentation_masks[0].numpy_view()
-      visualized_mask = cv2.convertScaleAbs(segmentation_mask, alpha=1.00)
+      ### use human pose in mask
+      if self.use_human_pose_mask:
+        segmentation_mask = detection_result.segmentation_masks[0].numpy_view()
+        visualized_mask = cv2.convertScaleAbs(segmentation_mask, alpha=1.00)
+      else:
+        h,w, c = visualized_mask.shape
+        visualized_mask = np.zeros((h,w), dtype = np.uint8)
       ### inflate mask
       kernel = np.ones((25,25),np.uint8)
       visualized_mask = cv2.dilate(visualized_mask, kernel, iterations=iterations)
@@ -133,4 +145,30 @@ class HumanPoseDetector:
       visualized_mask = np.zeros((img_h, img_w), dtype=np.uint8)
       visualized_mask[:] = 255
     return visualized_mask
-
+  
+  ### create multiple images provided by whitelist regions
+  def createMutipleMasks(self, image, detection_result, whitelist_regions : list[RegionOfInterest], iterations=4):
+    maskImageList = []
+    for roi in whitelist_regions:
+      if roi:
+        visualized_mask = image.copy()
+        try:
+          ### use human pose in mask
+          if self.use_human_pose_mask:
+            segmentation_mask = detection_result.segmentation_masks[0].numpy_view()
+            visualized_mask = cv2.convertScaleAbs(segmentation_mask, alpha=1.00)
+          else:
+            h,w, c = visualized_mask.shape
+            visualized_mask = np.zeros((h,w), dtype = np.uint8)
+          ### inflate mask
+          kernel = np.ones((25,25),np.uint8)
+          visualized_mask = cv2.dilate(visualized_mask, kernel, iterations=iterations)
+          visualized_mask = roi.setColor(visualized_mask, (255,255,255))
+        ### else, create a white image based on the input image
+        except Exception as e:
+          print(e)
+          img_h, img_w, cannel = image.shape
+          visualized_mask = np.zeros((img_h, img_w), dtype=np.uint8)
+          visualized_mask[:] = 255
+        maskImageList.append(visualized_mask)
+    return maskImageList
