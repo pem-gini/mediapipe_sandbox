@@ -8,68 +8,6 @@ import cv2
 
 import src.Utils as utils
 
-class RegionOfInterest():
-  def __init__(self, center, r, inflation=1.0):
-    self.center = center
-    self.r = r
-    self.inflation = inflation
-  def update(self, roi,  kxy=0.5, kr=0.5):
-    if roi:
-      self.inflation = roi.inflation
-      x,y = self.center
-      newx, newy = roi.center
-      ### smal complementary weight filter
-      x = int((1.0 - kxy) * x + (kxy * newx))
-      y = int((1.0 - kxy) * y + (kxy * newy))
-      self.center = (x,y)
-      self.r = int((1.0 - kr) * self.r + (kr * roi.r))
-  def cropFrom(self, image):
-    cropped = image.copy()
-    x,y = self.center
-    x,y = self.center
-    img_h, img_w = image.shape
-    w1 = utils.clamp(0, int(x - self.getInflatedR()), img_w)
-    w2 = utils.clamp(0, int(x + self.getInflatedR()), img_w)
-    h1 = utils.clamp(0, int(y - self.getInflatedR()), img_h)
-    h2 = utils.clamp(0, int(y + self.getInflatedR()), img_h)
-    l = min(w1,w2)
-    r = max(w1,w2)
-    t = min(h1,h2)
-    b = max(h1,h2)
-    cropped_image = cropped[t:b, l:r]
-    return cropped_image
-  def zoomInto(self, image):
-    ### more correct math after changing r definition
-    zoomfactor = utils.clamp(1.0, -1/6 * self.r + 8, 10.0) # big zoom
-    # zoomfactor = utils.clamp(1.0, -1/5 * self.r + 8, 10.0) # big -1  zoom
-    # zoomfactor = utils.clamp(1.0, -1/4 * self.r + 8, 10.0) # big -2  zoom
-    ### do the zoom
-    zoomed = utils.zoom_at(image, zoomfactor, self.center)
-    return zoomed
-  def setColor(self, image, color, inflate=True):
-    ### circle
-    x,y = self.center
-    img_h, img_w = image.shape
-    r = self.getInflatedR() if inflate else self.r
-    image = cv2.circle(image, self.center, int(r), color, -1)
-    return image
-  def setRectColor(self, image, color):
-    x,y = self.center
-    img_h, img_w = image.shape
-    w1 = utils.clamp(0, int(x - self.r), img_w)
-    w2 = utils.clamp(0, int(x + self.r), img_w)
-    h1 = utils.clamp(0, int(y - self.r), img_h)
-    h2 = utils.clamp(0, int(y + self.r), img_h)
-    l = min(w1,w2)
-    r = max(w1,w2)
-    t = min(h1,h2)
-    b = max(h1,h2)
-    image = cv2.rectangle(image, (l,t), (r, b), color, -1)
-    return image
-  def getInflatedR(self):
-    return self.r * self.inflation
-
-
 class HumanPoseDetector:
   def __init__(self, use_human_pose_mask=False):
     self.stamp = 0
@@ -121,7 +59,7 @@ class HumanPoseDetector:
     return annotated_image
   
   ### create a single mask image from multiple sources
-  def createMask(self, image, detection_result, iterations=4, whitelist_regions : list[RegionOfInterest] = []):
+  def createMask(self, image, detection_result, iterations=4, whitelist_regions : list[utils.RegionOfInterest] = []):
     visualized_mask = image.copy()
     ### if detection exists, create proper mask images
     try:
@@ -147,7 +85,7 @@ class HumanPoseDetector:
     return visualized_mask
   
   ### create multiple images provided by whitelist regions
-  def createMutipleMasks(self, image, detection_result, whitelist_regions : list[RegionOfInterest], iterations=4):
+  def createMutipleMasks(self, image, detection_result, whitelist_regions : list[utils.RegionOfInterest], iterations=4):
     maskImageList = []
     for roi in whitelist_regions:
       if roi:

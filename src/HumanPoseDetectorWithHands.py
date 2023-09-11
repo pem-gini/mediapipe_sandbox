@@ -16,8 +16,9 @@ class SpecialHandsOrientedHumanPoseDetector(HPD.HumanPoseDetector):
     def __init__(self, roi_filtered=False, use_human_pose_mask=False):
         super().__init__(use_human_pose_mask=use_human_pose_mask)
         self.roiFiltered = roi_filtered
-        self.leftHandRegion = HPD.RegionOfInterest((0,0), 0)
-        self.rightHandRegion = HPD.RegionOfInterest((0,0), 0)
+        self.faceRegion = utils.RegionOfInterest((0,0), 0)
+        self.leftHandRegion = utils.RegionOfInterest((0,0), 0)
+        self.rightHandRegion = utils.RegionOfInterest((0,0), 0)
     def update(self, image):        
         mpImage = mp.Image(image_format=mp.ImageFormat.SRGB, data=image) ### numpy image to mpImage
         # detect poses in the input image.
@@ -26,17 +27,18 @@ class SpecialHandsOrientedHumanPoseDetector(HPD.HumanPoseDetector):
         self.stamp = self.stamp + 1
         # process the result. In this case, visualize it.
         pose_landmarks = None
-        resultImage, leftHandRegion, rightHandRegion = self.draw(mpImage.numpy_view(), self.results) ##mpImage back to numpy image
+        resultImage, faceRegion, leftHandRegion, rightHandRegion = self.draw(mpImage.numpy_view(), self.results) ##mpImage back to numpy image
         ### creat special mask, where the hand regions are whitelisted, and the mask iteratons is smaller then usual
         maskImages = self.createMutipleMasks(mpImage.numpy_view(), self.results, iterations=1, whitelist_regions=[leftHandRegion, rightHandRegion])
-        return resultImage, maskImages[0], maskImages[1], leftHandRegion, rightHandRegion
+        return resultImage, maskImages[0], maskImages[1], faceRegion, leftHandRegion, rightHandRegion
     def draw(self, image, detection_result):
         ### call base class draw
         annotated_image = super().draw(image, detection_result)
         ### do something more
         hand_annotaded_image = annotated_image.copy()
         leftHandRegion = None
-        rightHandRegion = None   
+        rightHandRegion = None
+        faceRegion = None
         if detection_result:
             img_h, img_w, cannel = annotated_image.shape
             ### crawl through landmarks, find the hand wrists and draw a rect around them
@@ -65,59 +67,70 @@ class SpecialHandsOrientedHumanPoseDetector(HPD.HumanPoseDetector):
                 ### get point between index and pinky
                 idxl1, idxl2 = (19, 17)
                 idxr1, idxr2 = (20, 18)
-                ### Left Hand
-                try:
-                    ### get coordinate between wrist and pinky
-                    handLeftVal = np.mean([coords[idxl1],coords[idxl2]], axis=0).astype(int)
-                    ### get dist between wrist and pinky
-                    handLeftR = np.linalg.norm(np.array(coords[idxl1])-np.array(coords[idxl2]))
-                except Exception as e:
-                    ### hopeyfully only fires when coords[x] is None
-                    # print(e)
-                    pass
-                ### Right Hand
-                try:
-                    handRightVal = np.mean([coords[idxr1],coords[idxr2]], axis=0).astype(int)
-                    handRightR = np.linalg.norm(np.array(coords[idxr1])-np.array(coords[idxr2]))
-                except Exception as e:
-                    ### hopeyfully only fires when coords[x] is None
-                    # print(e)
-                    pass
-                ### filter none values for non existent landmarks
-                coords = np.array(list(filter(lambda i: i is not None, coords)))
-                try:
-                    ### not necessary, so we tr catch this
-                    rect = cv2.minAreaRect(np.array(coords))
-                    box = cv2.boxPoints(rect)
-                    box = np.intp(box)
-                    cv2.drawContours(hand_annotaded_image,[box],0,(0,0,255),2)
-                except:
-                    pass
-                ### do rect around both hands
-                ### calculate radius based on distance between     
-                handregioninflation = 4.5
-                ### filter hand regions
-                kxy = 0.6
-                kr = 0.2
-                if handLeftVal is not None and handLeftR is not None:
-                    newLeftHandRegion = HPD.RegionOfInterest(handLeftVal, handLeftR, inflation=handregioninflation)
-                    ### filter roi if necessary
-                    self.leftHandRegion.update(newLeftHandRegion,  kxy=kxy, kr=kr) if self.roiFiltered else newLeftHandRegion
-                    ### draw region
-                    ### radius safety factor ~ 4.5
-                    inflatedlR = int(self.leftHandRegion.getInflatedR())
-                    ### radius minimum size = 10 pixel, max size = 500 pixels
-                    inflatedlR = utils.clamp(25, inflatedlR, 500)
-                    cv2.circle(hand_annotaded_image, self.leftHandRegion.center, inflatedlR, (255,0,0), 2)
-                if handRightVal is not None and handRightR is not None:
-                    newRightHandRegion = HPD.RegionOfInterest(handRightVal, handRightR, inflation=handregioninflation)
-                    ### filter roi if necessary
-                    self.rightHandRegion.update(newRightHandRegion, kxy=kxy, kr=kr) if self.roiFiltered else newRightHandRegion
-                    ### draw region
-                    ### radius safety factor ~ 4.5
-                    inflatedrR = int(self.rightHandRegion.getInflatedR())
-                    ### radius minimum size = 10 pixel, max size = 500 pixels
-                    inflatedrR = utils.clamp(25, inflatedrR, 500)
-                    cv2.circle(hand_annotaded_image, self.rightHandRegion.center, inflatedrR, (0,255,0), 2)
+                ### indices for face = 0,1,2,3,4,5,6,7,8,9,10
+                faceIndices = [i for i in range(0,11)]
+                faceCoords = [coords[i] for i in faceIndices]
+                faceDetected = False if None in faceCoords else True
+                faceCenter = coords[0] ### nose
+                ### only continue the rest when a face was detected
+                if faceDetected:
+                    faceregioninflation = 2.0
+                    faceR = np.linalg.norm(np.array(coords[0]) - np.array(coords[8])) ### face to edge of face
+                    newFaceRegion = utils.RegionOfInterest(faceCenter, faceR, inflation=faceregioninflation)
+                    self.faceRegion.update(newFaceRegion, kxy=0.6, kr=0.2)
+                    ### Left Hand
+                    try:
+                        ### get coordinate between wrist and pinky
+                        handLeftVal = np.mean([coords[idxl1],coords[idxl2]], axis=0).astype(int)
+                        ### get dist between wrist and pinky
+                        handLeftR = np.linalg.norm(np.array(coords[idxl1])-np.array(coords[idxl2]))
+                    except Exception as e:
+                        ### hopeyfully only fires when coords[x] is None
+                        # print(e)
+                        pass
+                    ### Right Hand
+                    try:
+                        handRightVal = np.mean([coords[idxr1],coords[idxr2]], axis=0).astype(int)
+                        handRightR = np.linalg.norm(np.array(coords[idxr1])-np.array(coords[idxr2]))
+                    except Exception as e:
+                        ### hopeyfully only fires when coords[x] is None
+                        # print(e)
+                        pass
+                    ### filter none values for non existent landmarks
+                    coords = np.array(list(filter(lambda i: i is not None, coords)))
+                    try:
+                        ### not necessary, so we tr catch this
+                        rect = cv2.minAreaRect(np.array(coords))
+                        box = cv2.boxPoints(rect)
+                        box = np.intp(box)
+                        cv2.drawContours(hand_annotaded_image,[box],0,(0,0,255),2)
+                    except:
+                        pass
+                    ### do rect around both hands
+                    ### calculate radius based on distance between     
+                    handregioninflation = 4.5
+                    ### filter hand regions
+                    kxy = 0.6
+                    kr = 0.2
+                    if handLeftVal is not None and handLeftR is not None:
+                        newLeftHandRegion = utils.RegionOfInterest(handLeftVal, handLeftR, inflation=handregioninflation)
+                        ### filter roi if necessary
+                        self.leftHandRegion.update(newLeftHandRegion,  kxy=kxy, kr=kr)
+                        ### draw region
+                        ### radius safety factor ~ 4.5
+                        inflatedlR = int(self.leftHandRegion.getInflatedR())
+                        ### radius minimum size = 10 pixel, max size = 500 pixels
+                        inflatedlR = utils.clamp(25, inflatedlR, 500)
+                        cv2.circle(hand_annotaded_image, self.leftHandRegion.center, inflatedlR, (255,0,0), 2)
+                    if handRightVal is not None and handRightR is not None:
+                        newRightHandRegion = utils.RegionOfInterest(handRightVal, handRightR, inflation=handregioninflation)
+                        ### filter roi if necessary
+                        self.rightHandRegion.update(newRightHandRegion, kxy=kxy, kr=kr)
+                        ### draw region
+                        ### radius safety factor ~ 4.5
+                        inflatedrR = int(self.rightHandRegion.getInflatedR())
+                        ### radius minimum size = 10 pixel, max size = 500 pixels
+                        inflatedrR = utils.clamp(25, inflatedrR, 500)
+                        cv2.circle(hand_annotaded_image, self.rightHandRegion.center, inflatedrR, (0,255,0), 2)
 
-        return hand_annotaded_image, self.leftHandRegion, self.rightHandRegion
+        return hand_annotaded_image, self.faceRegion, self.leftHandRegion, self.rightHandRegion
