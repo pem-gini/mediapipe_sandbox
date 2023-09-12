@@ -101,7 +101,7 @@ class HumanPoseDetector:
           ### inflate mask
           kernel = np.ones((25,25),np.uint8)
           visualized_mask = cv2.dilate(visualized_mask, kernel, iterations=iterations)
-          visualized_mask = roi.setColor(visualized_mask, (255,255,255))
+          visualized_mask = roi.setColor(visualized_mask, (255,255,255), inflate=True)
         ### else, create a white image based on the input image
         except Exception as e:
           print(e)

@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import sys
 
 def clamp(minimum, x, maximum):
     return max(minimum, min(x, maximum))
@@ -61,29 +62,30 @@ def isLegitImage(img):
 
 
 class RegionOfInterest():
-  def __init__(self, center, r, inflation=1.0):
+  def __init__(self, center, r, inflation=1.0, minR=1.0, maxR=sys.maxsize):
     self.center = center
     self.r = r
     self.inflation = inflation
+    self.minR = minR
+    self.maxR = maxR
   def update(self, roi,  kxy=0.5, kr=0.5):
     if roi:
-      self.inflation = roi.inflation
       x,y = self.center
       newx, newy = roi.center
       ### smal complementary weight filter
       x = int((1.0 - kxy) * x + (kxy * newx))
       y = int((1.0 - kxy) * y + (kxy * newy))
       self.center = (x,y)
-      self.r = int((1.0 - kr) * self.r + (kr * roi.r))
+      self.r = clamp(self.minR, int((1.0 - kr) * self.getR() + (kr * roi.r)), self.maxR)
   def cropFrom(self, image):
     cropped = image.copy()
     x,y = self.center
     x,y = self.center
     img_h, img_w = image.shape
-    w1 = clamp(0, int(x - self.getInflatedR()), img_w)
-    w2 = clamp(0, int(x + self.getInflatedR()), img_w)
-    h1 = clamp(0, int(y - self.getInflatedR()), img_h)
-    h2 = clamp(0, int(y + self.getInflatedR()), img_h)
+    w1 = clamp(0, int(x - self.getR()), img_w)
+    w2 = clamp(0, int(x + self.getR()), img_w)
+    h1 = clamp(0, int(y - self.getR()), img_h)
+    h2 = clamp(0, int(y + self.getR()), img_h)
     l = min(w1,w2)
     r = max(w1,w2)
     t = min(h1,h2)
@@ -98,25 +100,27 @@ class RegionOfInterest():
     ### do the zoom
     zoomed = zoom_at(image, zoomfactor, self.center)
     return zoomed
-  def setColor(self, image, color, inflate=True):
+  def setColor(self, image, color, inflate=False):
     ### circle
     x,y = self.center
     img_h, img_w = image.shape
-    r = self.getInflatedR() if inflate else self.r
+    r = self.getInflatedR() if inflate else self.getR()
     image = cv2.circle(image, self.center, int(r), color, -1)
     return image
   def setRectColor(self, image, color):
     x,y = self.center
     img_h, img_w = image.shape
-    w1 = clamp(0, int(x - self.r), img_w)
-    w2 = clamp(0, int(x + self.r), img_w)
-    h1 = clamp(0, int(y - self.r), img_h)
-    h2 = clamp(0, int(y + self.r), img_h)
+    w1 = clamp(0, int(x - self.getR()), img_w)
+    w2 = clamp(0, int(x + self.getR()), img_w)
+    h1 = clamp(0, int(y - self.getR()), img_h)
+    h2 = clamp(0, int(y + self.getR()), img_h)
     l = min(w1,w2)
     r = max(w1,w2)
     t = min(h1,h2)
     b = max(h1,h2)
     image = cv2.rectangle(image, (l,t), (r, b), color, -1)
     return image
+  def getR(self):
+    return self.r
   def getInflatedR(self):
-    return self.r * self.inflation
+    return self.getR() * self.inflation

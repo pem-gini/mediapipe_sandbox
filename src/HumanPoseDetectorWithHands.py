@@ -17,8 +17,11 @@ class SpecialHandsOrientedHumanPoseDetector(HPD.HumanPoseDetector):
         super().__init__(use_human_pose_mask=use_human_pose_mask)
         self.roiFiltered = roi_filtered
         self.faceRegion = utils.RegionOfInterest((0,0), 0)
-        self.leftHandRegion = utils.RegionOfInterest((0,0), 0)
-        self.rightHandRegion = utils.RegionOfInterest((0,0), 0)
+        ### define regions of interest for hands
+        ### dont allow radius to be too small, as we would later zoom too far in 
+        ### set inflation, for some algorithms will need an inflated RoI
+        self.leftHandRegion = utils.RegionOfInterest((0,0), 0, minR=5.0, inflation=5.5) 
+        self.rightHandRegion = utils.RegionOfInterest((0,0), 0, minR=5.0, inflation=5.5)
     def update(self, image):        
         mpImage = mp.Image(image_format=mp.ImageFormat.SRGB, data=image) ### numpy image to mpImage
         # detect poses in the input image.
@@ -108,29 +111,24 @@ class SpecialHandsOrientedHumanPoseDetector(HPD.HumanPoseDetector):
                         pass
                     ### do rect around both hands
                     ### calculate radius based on distance between     
-                    handregioninflation = 4.5
                     ### filter hand regions
                     kxy = 0.6
                     kr = 0.2
                     if handLeftVal is not None and handLeftR is not None:
-                        newLeftHandRegion = utils.RegionOfInterest(handLeftVal, handLeftR, inflation=handregioninflation)
+                        newLeftHandRegion = utils.RegionOfInterest(handLeftVal, handLeftR)
                         ### filter roi if necessary
                         self.leftHandRegion.update(newLeftHandRegion,  kxy=kxy, kr=kr)
                         ### draw region
-                        ### radius safety factor ~ 4.5
-                        inflatedlR = int(self.leftHandRegion.getInflatedR())
-                        ### radius minimum size = 10 pixel, max size = 500 pixels
-                        inflatedlR = utils.clamp(25, inflatedlR, 500)
-                        cv2.circle(hand_annotaded_image, self.leftHandRegion.center, inflatedlR, (255,0,0), 2)
+                        ### radius minimum size = whatever the min size of the roi is, max size = 500 pixels
+                        inflatedR = utils.clamp(self.leftHandRegion.minR,  int(self.leftHandRegion.getInflatedR()), 500)
+                        cv2.circle(hand_annotaded_image, self.leftHandRegion.center, inflatedR, (255,0,0), 2)
                     if handRightVal is not None and handRightR is not None:
-                        newRightHandRegion = utils.RegionOfInterest(handRightVal, handRightR, inflation=handregioninflation)
+                        newRightHandRegion = utils.RegionOfInterest(handRightVal, handRightR)
                         ### filter roi if necessary
                         self.rightHandRegion.update(newRightHandRegion, kxy=kxy, kr=kr)
                         ### draw region
-                        ### radius safety factor ~ 4.5
-                        inflatedrR = int(self.rightHandRegion.getInflatedR())
-                        ### radius minimum size = 10 pixel, max size = 500 pixels
-                        inflatedrR = utils.clamp(25, inflatedrR, 500)
-                        cv2.circle(hand_annotaded_image, self.rightHandRegion.center, inflatedrR, (0,255,0), 2)
+                        ### radius minimum size = whatever the min size of the roi is, max size = 500 pixels
+                        inflatedR = utils.clamp(self.rightHandRegion.minR,  int(self.rightHandRegion.getInflatedR()), 500)
+                        cv2.circle(hand_annotaded_image, self.rightHandRegion.center, inflatedR, (0,255,0), 2)
 
         return hand_annotaded_image, self.faceRegion, self.leftHandRegion, self.rightHandRegion

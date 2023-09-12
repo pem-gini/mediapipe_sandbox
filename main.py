@@ -17,11 +17,11 @@ mode = 'complex'
 #############################################################################################
 
 def zoomFuncHands(roi):
-  # zoomfactor = utils.clamp(1.0, -1/5 * self.r + 8, 10.0) # big -1  zoom
-  # zoomfactor = utils.clamp(1.0, -1/4 * self.r + 8, 10.0) # big -2  zoom
-  return utils.clamp(1.0, -1/6 * roi.r + 8, 10.0) # big zoom
+  # return utils.clamp(1.0, -1/5 * roi.r + 8, 10.0) # big -1  zoom
+  return utils.clamp(1.0, -1/4 * roi.getR() + 8, 8.0) # big -2  zoom
+  # return utils.clamp(1.0, -1/6 * roi.r + 8, 10.0) # big zoom
 def zoomFuncFace(roi):
-  return utils.clamp(1.0, -1/6 * roi.r + 10, 10.0) # big zoom
+  return utils.clamp(1.0, -1/6 * roi.getR() + 10, 10.0) # big zoom
   
 def complex_main():
   cap = cv2.VideoCapture(0)
