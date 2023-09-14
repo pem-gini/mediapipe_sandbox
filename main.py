@@ -2,6 +2,9 @@
 
 
 import cv2
+import collections
+import numpy as np
+from enum import Enum
 
 from src.GestureRecognizer import GestureRecognizer
 from src.HumanPoseDetectorWithHands import SpecialHandsOrientedHumanPoseDetector
@@ -18,19 +21,55 @@ mode = 'complex'
 
 def zoomFuncHands(roi):
   # return utils.clamp(1.0, -1/5 * roi.r + 8, 10.0) # big -1  zoom
-  return utils.clamp(1.0, -1/4 * roi.getR() + 8, 8.0) # big -2  zoom
+  return utils.clamp(1.0, -1/3.5 * roi.getR() + 8, 8.0) # big -2  zoom
   # return utils.clamp(1.0, -1/6 * roi.r + 8, 10.0) # big zoom
 def zoomFuncFace(roi):
-  return utils.clamp(1.0, -1/6 * roi.getR() + 10, 10.0) # big zoom
-  
+  # return utils.clamp(1.0, -1/6 * roi.getR() + 10, 10.0) # big zoom
+  return utils.clamp(1.0, -1/7.5 * roi.getR() + 10, 10.0) # big zoom
+
+
+class FaceDetectionFilter:
+  class State(Enum):
+      FACE_PRESENT = 1
+      FACE_MISSING = 0
+  def __init__(self, filterTime, fps, threshold_negative_to_positive, treshold_positive_to_negative):
+    self.filterTime = filterTime
+    self.bufsize = int(fps * self.filterTime)
+    self.tresholdNegativeToPositive = threshold_negative_to_positive
+    self.tresholdPositiveToNegative  = treshold_positive_to_negative
+    self.buf = collections.deque(maxlen=self.bufsize)
+    self.state = FaceDetectionFilter.State.FACE_MISSING
+  def update(self, faceDetectionSuccess):
+    self.buf.append(faceDetectionSuccess)
+    visibility = np.mean(self.buf)
+    ### when we currently have no face
+    if self.state == FaceDetectionFilter.State.FACE_MISSING:
+      ### return true, whenever some faces face has been seen depending on the "positive" hysteresis threshold
+      if visibility >= self.tresholdNegativeToPositive:
+        self.state = FaceDetectionFilter.State.FACE_PRESENT
+        self.buf.extend([True for x in range(self.bufsize)])
+        return True
+      else:
+        return False
+    elif self.state == FaceDetectionFilter.State.FACE_PRESENT:
+      ### return true, whenever some faces face has been seen depending on the "negative" hysteresis threshold
+      if visibility <= self.tresholdPositiveToNegative:
+        self.state = FaceDetectionFilter.State.FACE_MISSING
+        self.buf.extend([False for x in range(self.bufsize)])
+        return False
+      else: 
+        return True
+  def isFaceVisible(self):
+    return self.state == FaceDetectionFilter.State.FACE_PRESENT
+
+    
 def complex_main():
   cap = cv2.VideoCapture(0)
   # cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
   # cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
   cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
   cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-  cap.set(cv2.CAP_PROP_FPS, 20)
-  fps = 20
+  fps = cap.get(cv2.CAP_PROP_FPS)
   ### instantiate gesture recognizer
   r1 = GestureRecognizer(num_hands=1, ca=0.1, cb=0.1, cc=0.1)
   r2 = GestureRecognizer(num_hands=1, ca=0.1, cb=0.1, cc=0.1)
@@ -40,7 +79,14 @@ def complex_main():
   d = SpecialHandsOrientedHumanPoseDetector(roi_filtered=True, use_human_pose_mask=False)
   ### instantiate face detector
   f = FaceDetector(ca=0.8)
-  ### read images from camera and feed into recognizer class
+  ### create ringbuffer for filtering faceDetectionSuccesses a little
+  faceSuccessFilter = FaceDetectionFilter(
+    2.0, ### X seconds
+    fps, 
+    0.05, ### 5% of successful detections to accept in the last X seconds when face is not visible (before getting visible)
+    0.25  ### 50% of successful detections to accept in the last X seconds when face is visible (before getting not visible)
+  )
+  ### read images from camera and feed into recognizer classs
   while cap.isOpened():
     success, image = cap.read()
     if success:
@@ -57,7 +103,11 @@ def complex_main():
         faceImage, successfullFaceDetection, faceBoxes = f.update(faceImageZoomed)
         faceImage = cv2.resize(faceImage, (400, 300), interpolation = cv2.INTER_AREA)
         utils.showInMovedWindow("FaceVideo",faceImage, 700, 10)
-        if successfullFaceDetection:
+        ### filter the face detection slightly
+        faceSuccessFilter.update(successfullFaceDetection)
+        # print(faceSuccessFilter.isFaceVisible())
+        #if successfullFaceDetection:
+        if faceSuccessFilter.isFaceVisible():
           ### use the masked image to mask out everything except for the human body
           maskedHumanLeft = cv2.bitwise_and(image, image, mask=maskImageLeft)
           maskedHumanRight = cv2.bitwise_and(image, image, mask=maskImageRight)
