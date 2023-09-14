@@ -112,7 +112,7 @@ class SpecialHandsOrientedHumanPoseDetector(HPD.HumanPoseDetector):
                     ### do rect around both hands
                     ### calculate radius based on distance between     
                     ### filter hand regions
-                    kxy = 0.6
+                    kxy = 1.0
                     kr = 0.2
                     if handLeftVal is not None and handLeftR is not None:
                         newLeftHandRegion = utils.RegionOfInterest(handLeftVal, handLeftR)

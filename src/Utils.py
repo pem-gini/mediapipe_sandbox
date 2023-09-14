@@ -31,7 +31,7 @@ def cropToSmallestSide(image):
   cropped = image[crop_h:img_h-crop_h, crop_w:img_w-crop_w].copy()
   return cropped
 
-def zoom_at(img, zoom, coord=None):
+def zoom_at(img, zoom, coord=None, sharpen=False):
   """
   Simple image zooming without boundary checking.
   Centered at "coord", if given, else the image center.
@@ -54,7 +54,20 @@ def zoom_at(img, zoom, coord=None):
   r = max(0, int(round(cx + wzoom/zoom * .5)))
   # print(t,b,l,r)
   zoomedImg = img[t:b, l:r, :].copy()
+  if sharpen:
+    zoomedImg = sharpenImage(zoomedImg)
   return zoomedImg
+
+def sharpenImage(img):
+  ### we define a sharpening kernel (a 3×3 matrix) with values that emphasize edges. 
+  kernel = np.array([
+    [0, -1, 0],
+    [-1, 5, -1],
+    [0, -1, 0]
+  ])
+  ### apply kernel to image
+  sharpened = cv2.filter2D(img, -1, kernel)
+  return sharpened
 
 def isLegitImage(img):
   img_h, img_w, cannel = img.shape
@@ -98,7 +111,7 @@ class RegionOfInterest():
       ### more correct math after changing r definition
       zoomfactor = f(self)
     ### do the zoom
-    zoomed = zoom_at(image, zoomfactor, self.center)
+    zoomed = zoom_at(image, zoomfactor, self.center, sharpen=True)
     return zoomed
   def setColor(self, image, color, inflate=False):
     ### circle

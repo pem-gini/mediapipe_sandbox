@@ -4,6 +4,7 @@ from mediapipe.tasks.python import vision
 from mediapipe import solutions
 from mediapipe.framework.formats import landmark_pb2
 import numpy as np
+import time
 import cv2
 
 import src.Utils as utils
@@ -23,9 +24,14 @@ class HumanPoseDetector:
     )
     self.detector = vision.PoseLandmarker.create_from_options(options)
     self.results = None
-
+    self.lastFrameStamp = time.time()
+    
   def process_frame(self, result: vision.PoseLandmarkerResult, output_image: mp.Image, timestamp_ms: int):
+    now = time.time()
     self.results = result
+    # print(now - self.lastFrameStamp)
+    ### ~10ms
+    self.lastFrameStamp = now
 
   def update(self, image):
     mpImage = mp.Image(image_format=mp.ImageFormat.SRGB, data=image) ### numpy image to mpImage
@@ -34,7 +40,6 @@ class HumanPoseDetector:
     # ### calculate time
     self.stamp = self.stamp + 1
     # process the result. In this case, visualize it.
-    pose_landmarks = None
     resultImage = self.draw(mpImage.numpy_view(), self.results) ##mpImage back to numpy image
     maskImage = self.createMask(mpImage.numpy_view(), self.results)
     return resultImage, maskImage
